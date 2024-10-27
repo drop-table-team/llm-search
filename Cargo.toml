@@ -15,7 +15,6 @@ log = "0.4.22"
 actix-web = "4"
 qdrant-client = "1.12.1"
 tokenizers = { version = "0.20.1", features = ["http"] }
-ahash = "0.8.11"
 actix-cors = "0.7.0"
 
 [dependencies.uuid]

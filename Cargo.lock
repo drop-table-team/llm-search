@@ -1338,7 +1338,6 @@ version = "0.1.0"
 dependencies = [
  "actix-cors",
  "actix-web",
- "ahash",
  "anyhow",
  "env_logger",
  "envy",
