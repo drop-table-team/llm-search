@@ -1,27 +1,21 @@
+use actix_cors::Cors;
 use actix_web::{web::Data, App, HttpServer};
-use ahash::AHashMap;
-use api::{ask, new_chat};
-use chat::Chat;
+use api::ask;
 use llm::Llm;
 use log::{error, info};
-use module::Module;
 use serde::Deserialize;
 use std::{env, sync::Arc};
-use tokio::sync::RwLock;
-use uuid::Uuid;
 
 pub mod api;
-pub mod chat;
 pub mod llm;
-pub mod module;
 pub mod ollama;
 
 #[derive(Deserialize, Debug)]
 struct Config {
     address: String,
-    module_name: String,
-    backend_address: String,
     ollama_address: String,
+    qdrant_address: String,
+    qdrant_collection: String,
 }
 
 #[tokio::main]
@@ -42,39 +36,21 @@ async fn main() {
 
     info!("Loaded config: {:?}", config);
 
-    let module = Module::new(config.module_name.clone());
-
-    let response = match module.register(&config.backend_address).await {
-        Ok(r) => r,
-        Err(e) => {
-            error!("{}", e);
-            return;
-        }
-    };
-
-    info!(
-        "Successfuly registered module '{}' on backend '{}'",
-        config.module_name, config.backend_address
-    );
-
     let llm = Arc::new(
         Llm::new(
-            response.qdrant_address,
+            config.qdrant_address,
             config.ollama_address,
-            "collection".to_string(),
+            config.qdrant_collection,
         )
         .unwrap(),
     );
 
-    let chats: &'static RwLock<AHashMap<Uuid, Chat>> =
-        Box::leak(Box::new(RwLock::new(AHashMap::new())));
-
     HttpServer::new(move || {
+        let cors = Cors::permissive();
         App::new()
-            .service(new_chat)
+            .wrap(cors)
             .service(ask)
             .app_data(Data::new(llm.clone()))
-            .app_data(Data::new(chats))
     })
     .bind(config.address)
     .unwrap()

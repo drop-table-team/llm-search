@@ -1,7 +1,27 @@
-use std::sync::Arc;
+use std::str::FromStr;
 
-use crate::{chat::Chat, ollama::Ollama};
-use qdrant_client::Qdrant;
+use crate::ollama::Ollama;
+use anyhow::bail;
+use qdrant_client::{
+    qdrant::{with_payload_selector::SelectorOptions, SearchPoints, WithPayloadSelector},
+    Qdrant,
+};
+use serde::Serialize;
+use uuid::Uuid;
+
+#[derive(Serialize, Debug)]
+pub struct ChatResponse {
+    response: String,
+    sources: Vec<Source>,
+}
+
+#[derive(Serialize, Debug)]
+pub struct Source {
+    id: usize,
+    uuid: Uuid,
+    title: String,
+    snippet: String,
+}
 
 pub struct Llm {
     qdrant: Qdrant,
@@ -22,19 +42,70 @@ impl Llm {
         })
     }
 
-    pub fn ollama(&self) -> &Ollama {
-        &self.ollama
-    }
+    pub async fn chat(&self, prompt: &str, cutoff: f32) -> anyhow::Result<ChatResponse> {
+        let embeddings = self.ollama.embeddings(prompt).await?;
 
-    pub fn qdrant(&self) -> &Qdrant {
-        &self.qdrant
-    }
+        let mut context = String::new();
+        let mut sources = Vec::new();
 
-    pub fn collection_name(&self) -> &str {
-        &self.collection_name
-    }
+        for embedding in embeddings {
+            let results = self
+                .qdrant
+                .search_points(SearchPoints {
+                    collection_name: self.collection_name.to_string(),
+                    vector: embedding,
+                    limit: 3,
+                    with_payload: Some(WithPayloadSelector {
+                        selector_options: Some(SelectorOptions::Enable(true)),
+                    }),
+                    score_threshold: Some(cutoff),
+                    ..Default::default()
+                })
+                .await?
+                .result;
 
-    pub fn new_chat(self: &Arc<Self>) -> Chat {
-        Chat::new(self.clone())
+            for (idx, point) in results.iter().enumerate() {
+                let uuid = match point.payload.get("uuid") {
+                    Some(v) => Uuid::from_str(&v.as_str().unwrap()).unwrap(),
+                    None => {
+                        bail!("Payload doesn't contain an uuid");
+                    }
+                };
+
+                let text = match point.payload.get("text") {
+                    Some(v) => v.as_str().unwrap().to_string(),
+                    None => {
+                        bail!("Payload doesn't contain text");
+                    }
+                };
+
+                let title = match point.payload.get("title") {
+                    Some(v) => v.as_str().unwrap().to_string(),
+                    None => {
+                        bail!("Payload doesn't contain title");
+                    }
+                };
+
+                context.push_str(&format!("\nQuelle [{}]: {}\n", idx + 1, text));
+                sources.push(Source {
+                    id: idx + 1,
+                    uuid,
+                    title,
+                    snippet: text,
+                });
+            }
+        }
+
+        let prompt = format!(
+            "Basierend auf folgenden Informationen, beantworte bitte diese Frage und verwende die Quellen aus dem Kontext. Benutze die IEEE-Zitierweise wenn du eine Quelle in der Antwort verwendest. Frage: {}\n\nKontext (Quellen):\n{}",
+            prompt, context,
+        );
+
+        let response = self.ollama.chat(None, &prompt, None, None).await?;
+
+        return Ok(ChatResponse {
+            response: response.response,
+            sources,
+        });
     }
 }

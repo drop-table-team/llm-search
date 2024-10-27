@@ -3,7 +3,7 @@ This plugin provides a ChatGPT like interface for the knowledge hub.
 
 ## Deployment
 Use the following command to run `llm-search`:
-`ADDRESS="0.0.0.0:8080" MODULE_NAME="llm-search" BACKEND_ADDRESS="http://192.168.0.69:80" OLLAMA_ADDRESS="http://192.168.0.104:11434" cargo run --release`
+`ADDRESS="0.0.0.0:8081" OLLAMA_ADDRESS="http://192.168.0.104:11434" QDRANT_ADDRESS="http://192.168.0.111:6334" QDRANT_COLLECTION="data" cargo run --release`
 
 | Name | Description | Example |
 | - | - | - |
