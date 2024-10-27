@@ -8,7 +8,7 @@ RUN cargo build --release
 
 FROM debian:bookworm-slim
 
-RUN apk update && apt install -y openssl libssl-dev
+RUN apt update && apt install -y openssl libssl-dev
 
 COPY --from=builder /app/target/release/llm-search .
 
